@@ -120,8 +120,10 @@ def make_subgraph(g, nodes):
         relabeled_nodes.append(g.ids[node])
     sub_g = g.subgraph(relabeled_nodes)
 
-    sub_g.ndata.update({k: g.ndata[k][sub_g.ndata[dgl.NID]] for k in g.ndata if k != 'norm'})
-    sub_g.edata.update({k: g.edata[k][sub_g.edata[dgl.EID]] for k in g.edata})
+    # sub_g.ndata.update({k: g.ndata[k][sub_g.ndata[dgl.NID]] for k in g.ndata if k != 'norm'}) original
+    # sub_g.edata.update({k: g.edata[k][sub_g.edata[dgl.EID]] for k in g.edata})
+    sub_g.ndata.update({k: g.ndata[k][sub_g.parent_nid] for k in g.ndata if k != 'norm'}) # modified eval_paper_authors do to version problem
+    sub_g.edata.update({k: g.edata[k][sub_g.parent_eid] for k in g.edata}) # modified eval_paper_authors do to version problem
     sub_g.ids = {}
     norm = comp_deg_norm(sub_g)
     sub_g.ndata['norm'] = norm.view(-1,1)
@@ -183,110 +185,210 @@ def get_node_ids_to_g_id(s_hist_sorted, s_hist_t_sorted, s_tem, g_list, g_id_dic
 '''
 Get sorted s and r to make batch for RNN (sorted by length)
 '''
-def get_sorted_s_r_embed(s_hist, s, r, ent_embeds):
-    s_hist_len = torch.LongTensor(list(map(len, s_hist))).cuda()
-    s_len, s_idx = s_hist_len.sort(0, descending=True)
-    num_non_zero = len(torch.nonzero(s_len))
-    s_len_non_zero = s_len[:num_non_zero]
+def get_sorted_s_r_embed(s_hist, s, r, ent_embeds, use_cuda): # modified eval_paper_authors: cuda request
+    if use_cuda: # modified eval_paper_authors: cuda request
+        s_hist_len = torch.LongTensor(list(map(len, s_hist))).cuda() 
+        s_len, s_idx = s_hist_len.sort(0, descending=True)
+        num_non_zero = len(torch.nonzero(s_len))
+        s_len_non_zero = s_len[:num_non_zero]
 
-    s_hist_sorted = []
-    for idx in s_idx:
-        s_hist_sorted.append(s_hist[idx.item()])
-    flat_s = []
-    len_s = []
-    s_hist_sorted = s_hist_sorted[:num_non_zero]
-    for hist in s_hist_sorted:
-        for neighs in hist:
-            len_s.append(len(neighs))
-            for neigh in neighs:
-                flat_s.append(neigh)
-    s_tem = s[s_idx]
-    r_tem = r[s_idx]
-    embeds = ent_embeds[torch.LongTensor(flat_s).cuda()]
-    embeds_split = torch.split(embeds, len_s)
+        s_hist_sorted = []
+        for idx in s_idx:
+            s_hist_sorted.append(s_hist[idx.item()])
+        flat_s = []
+        len_s = []
+        s_hist_sorted = s_hist_sorted[:num_non_zero]
+        for hist in s_hist_sorted:
+            for neighs in hist:
+                len_s.append(len(neighs))
+                for neigh in neighs:
+                    flat_s.append(neigh)
+        s_tem = s[s_idx]
+        r_tem = r[s_idx]
+        embeds = ent_embeds[torch.LongTensor(flat_s).cuda()]
+        embeds_split = torch.split(embeds, len_s)
+    else: # modified eval_paper_authors: cuda request
+        s_hist_len = torch.LongTensor(list(map(len, s_hist)))  # modified eval_paper_authors: no cuda
+        s_len, s_idx = s_hist_len.sort(0, descending=True)
+        num_non_zero = len(torch.nonzero(s_len))
+        s_len_non_zero = s_len[:num_non_zero]
+
+        s_hist_sorted = []
+        for idx in s_idx:
+            s_hist_sorted.append(s_hist[idx.item()])
+        flat_s = []
+        len_s = []
+        s_hist_sorted = s_hist_sorted[:num_non_zero]
+        for hist in s_hist_sorted:
+            for neighs in hist:
+                len_s.append(len(neighs))
+                for neigh in neighs:
+                    flat_s.append(neigh)
+        s_tem = s[s_idx]
+        r_tem = r[s_idx]
+        embeds = ent_embeds[torch.LongTensor(flat_s)]
+        embeds_split = torch.split(embeds, len_s)       
     return s_len_non_zero, s_tem, r_tem, embeds, len_s, embeds_split
 
-def get_sorted_s_r_embed_rgcn(s_hist_data, s, r, ent_embeds, graph_dict, global_emb):
-    s_hist = s_hist_data[0]
-    s_hist_t = s_hist_data[1]
-    s_hist_len = torch.LongTensor(list(map(len, s_hist))).cuda()
-    s_len, s_idx = s_hist_len.sort(0, descending=True)
-    num_non_zero = len(torch.nonzero(s_len))
-    s_len_non_zero = s_len[:num_non_zero]
-    s_hist_sorted = []
-    s_hist_t_sorted = []
-    global_emb_list = []
-    for i, idx in enumerate(s_idx):
-        if i == num_non_zero:
-            break
-        s_hist_sorted.append(s_hist[idx])
-        s_hist_t_sorted.append(s_hist_t[idx])
-        for tt in s_hist_t[idx]:
-            global_emb_list.append(global_emb[tt].view(1, ent_embeds.shape[1]).cpu())
+def get_sorted_s_r_embed_rgcn(s_hist_data, s, r, ent_embeds, graph_dict, global_emb, use_cuda): # modified eval_paper_authors: cuda request
+    if use_cuda: # modified eval_paper_authors: cuda request
+        s_hist = s_hist_data[0]
+        s_hist_t = s_hist_data[1]
+        s_hist_len = torch.LongTensor(list(map(len, s_hist))).cuda()
+        s_len, s_idx = s_hist_len.sort(0, descending=True)
+        num_non_zero = len(torch.nonzero(s_len))
+        s_len_non_zero = s_len[:num_non_zero]
+        s_hist_sorted = []
+        s_hist_t_sorted = []
+        global_emb_list = []
+        for i, idx in enumerate(s_idx):
+            if i == num_non_zero:
+                break
+            s_hist_sorted.append(s_hist[idx])
+            s_hist_t_sorted.append(s_hist_t[idx])
+            for tt in s_hist_t[idx]:
+                global_emb_list.append(global_emb[tt].view(1, ent_embeds.shape[1]).cpu())
 
-    s_tem = s[s_idx]
-    r_tem = r[s_idx]
+        s_tem = s[s_idx]
+        r_tem = r[s_idx]
 
-    neighs_t = get_neighs_by_t(s_hist_sorted, s_hist_t_sorted, s_tem)
+        neighs_t = get_neighs_by_t(s_hist_sorted, s_hist_t_sorted, s_tem)
 
-    g_list, g_id_dict = get_g_list_id(neighs_t, graph_dict)
+        g_list, g_id_dict = get_g_list_id(neighs_t, graph_dict)
 
-    node_ids_graph, len_s = get_node_ids_to_g_id(s_hist_sorted, s_hist_t_sorted, s_tem, g_list, g_id_dict)
+        node_ids_graph, len_s = get_node_ids_to_g_id(s_hist_sorted, s_hist_t_sorted, s_tem, g_list, g_id_dict)
 
-    idx = torch.cuda.current_device()
-    g_list = [g.to(torch.device('cuda:'+str(idx))) for g in g_list]  
-    batched_graph = dgl.batch(g_list)
-    batched_graph.ndata['h'] = ent_embeds[batched_graph.ndata['id']].view(-1, ent_embeds.shape[1])
+        idx = torch.cuda.current_device()
+        g_list = [g.to(torch.device('cuda:'+str(idx))) for g in g_list]  
+        batched_graph = dgl.batch(g_list)
+        batched_graph.ndata['h'] = ent_embeds[batched_graph.ndata['id']].view(-1, ent_embeds.shape[1])
+        
 
-    move_dgl_to_cuda(batched_graph)
-    global_emb_list = torch.cat(global_emb_list, dim=0).cuda()
+        move_dgl_to_cuda(batched_graph)
+        global_emb_list = torch.cat(global_emb_list, dim=0).cuda()
+    else:
+        s_hist = s_hist_data[0]
+        s_hist_t = s_hist_data[1]
+        s_hist_len = torch.LongTensor(list(map(len, s_hist)))
+        s_len, s_idx = s_hist_len.sort(0, descending=True)
+        num_non_zero = len(torch.nonzero(s_len))
+        s_len_non_zero = s_len[:num_non_zero]
+        s_hist_sorted = []
+        s_hist_t_sorted = []
+        global_emb_list = []
+        for i, idx in enumerate(s_idx):
+            if i == num_non_zero:
+                break
+            s_hist_sorted.append(s_hist[idx])
+            s_hist_t_sorted.append(s_hist_t[idx])
+            for tt in s_hist_t[idx]:
+                global_emb_list.append(global_emb[tt].view(1, ent_embeds.shape[1]).cpu())
+
+        s_tem = s[s_idx]
+        r_tem = r[s_idx]
+
+        neighs_t = get_neighs_by_t(s_hist_sorted, s_hist_t_sorted, s_tem)
+
+        g_list, g_id_dict = get_g_list_id(neighs_t, graph_dict)
+
+        node_ids_graph, len_s = get_node_ids_to_g_id(s_hist_sorted, s_hist_t_sorted, s_tem, g_list, g_id_dict)
+
+        
+        g_list = [g.to(torch.device('cpu')) for g in g_list]  
+        batched_graph = dgl.batch(g_list)
+        batched_graph.ndata['h'] = ent_embeds[batched_graph.ndata['id']].view(-1, ent_embeds.shape[1])
+        
+
+        batched_graph
+        global_emb_list = torch.cat(global_emb_list, dim=0)     
 
     return s_len_non_zero, s_tem, r_tem, batched_graph, node_ids_graph, global_emb_list
 
-def get_s_r_embed_rgcn(s_hist_data, s, r, ent_embeds, graph_dict, global_emb):
-    s_hist = s_hist_data[0]
-    s_hist_t = s_hist_data[1]
-    s_hist_len = torch.LongTensor(list(map(len, s_hist))).cuda()
+def get_s_r_embed_rgcn(s_hist_data, s, r, ent_embeds, graph_dict, global_emb, use_cuda): # modified eval_paper_authors: cuda request
+    if use_cuda: # modified eval_paper_authors: cuda request
+        s_hist = s_hist_data[0]
+        s_hist_t = s_hist_data[1]
+        s_hist_len = torch.LongTensor(list(map(len, s_hist))).cuda()
 
-    s_idx = torch.arange(0,len(s_hist_len))
-    s_len = s_hist_len
-    num_non_zero = len(torch.nonzero(s_len))
-    s_len_non_zero = s_len[:num_non_zero]
-    s_hist_sorted = []
-    s_hist_t_sorted = []
-    global_emb_list = []
-    for i, idx in enumerate(s_idx):
-        if i == num_non_zero:
-            break
-        s_hist_sorted.append(s_hist[idx])
-        s_hist_t_sorted.append(s_hist_t[idx])
-        for tt in s_hist_t[idx]:
-            global_emb_list.append(global_emb[tt].view(1, ent_embeds.shape[1]).cpu())
+        s_idx = torch.arange(0,len(s_hist_len))
+        s_len = s_hist_len
+        num_non_zero = len(torch.nonzero(s_len))
+        s_len_non_zero = s_len[:num_non_zero]
+        s_hist_sorted = []
+        s_hist_t_sorted = []
+        global_emb_list = []
+        for i, idx in enumerate(s_idx):
+            if i == num_non_zero:
+                break
+            s_hist_sorted.append(s_hist[idx])
+            s_hist_t_sorted.append(s_hist_t[idx])
+            for tt in s_hist_t[idx]:
+                global_emb_list.append(global_emb[tt].view(1, ent_embeds.shape[1]).cpu())
 
-    s_tem = s[s_idx]
-    r_tem = r[s_idx]
+        s_tem = s[s_idx]
+        r_tem = r[s_idx]
 
-    neighs_t = get_neighs_by_t(s_hist_sorted, s_hist_t_sorted, s_tem)
+        neighs_t = get_neighs_by_t(s_hist_sorted, s_hist_t_sorted, s_tem)
 
-    g_list, g_id_dict = get_g_list_id(neighs_t, graph_dict)
+        g_list, g_id_dict = get_g_list_id(neighs_t, graph_dict)
 
-    node_ids_graph, len_s = get_node_ids_to_g_id(s_hist_sorted, s_hist_t_sorted, s_tem, g_list, g_id_dict)
+        node_ids_graph, len_s = get_node_ids_to_g_id(s_hist_sorted, s_hist_t_sorted, s_tem, g_list, g_id_dict)
 
-    idx = torch.cuda.current_device()
-    g_list = [g.to(torch.device('cuda:'+str(idx))) for g in g_list]  
-    batched_graph = dgl.batch(g_list)
-    batched_graph.ndata['h'] = ent_embeds[batched_graph.ndata['id']].view(-1, ent_embeds.shape[1])
+        idx = torch.cuda.current_device()
+        g_list = [g.to(torch.device('cuda:'+str(idx))) for g in g_list]  
+        batched_graph = dgl.batch(g_list)
+        batched_graph.ndata['h'] = ent_embeds[batched_graph.ndata['id']].view(-1, ent_embeds.shape[1])
 
-    move_dgl_to_cuda(batched_graph)
-    global_emb_list = torch.cat(global_emb_list, dim=0).cuda()
+        move_dgl_to_cuda(batched_graph)
+        global_emb_list = torch.cat(global_emb_list, dim=0).cuda()
+    else: # modified eval_paper_authors: no cuda
+        s_hist = s_hist_data[0] 
+        s_hist_t = s_hist_data[1]
+        s_hist_len = torch.LongTensor(list(map(len, s_hist)))
 
+        s_idx = torch.arange(0,len(s_hist_len))
+        s_len = s_hist_len
+        num_non_zero = len(torch.nonzero(s_len))
+        s_len_non_zero = s_len[:num_non_zero]
+        s_hist_sorted = []
+        s_hist_t_sorted = []
+        global_emb_list = []
+        for i, idx in enumerate(s_idx):
+            if i == num_non_zero:
+                break
+            s_hist_sorted.append(s_hist[idx])
+            s_hist_t_sorted.append(s_hist_t[idx])
+            for tt in s_hist_t[idx]:
+                global_emb_list.append(global_emb[tt].view(1, ent_embeds.shape[1]).cpu())
+
+        s_tem = s[s_idx]
+        r_tem = r[s_idx]
+
+        neighs_t = get_neighs_by_t(s_hist_sorted, s_hist_t_sorted, s_tem)
+
+        g_list, g_id_dict = get_g_list_id(neighs_t, graph_dict)
+
+        node_ids_graph, len_s = get_node_ids_to_g_id(s_hist_sorted, s_hist_t_sorted, s_tem, g_list, g_id_dict)
+
+
+        # g_list = [g for g in g_list]  
+        g_list = [g.to(torch.device('cpu')) for g in g_list]  
+        batched_graph = dgl.batch(g_list)
+        batched_graph.ndata['h'] = ent_embeds[batched_graph.ndata['id']].view(-1, ent_embeds.shape[1])
+
+        batched_graph
+        global_emb_list = torch.cat(global_emb_list, dim=0) 
     return s_len_non_zero, s_tem, r_tem, batched_graph, node_ids_graph, global_emb_list
 
 
 # assuming pred and soft_targets are both Variables with shape (batchsize, num_of_classes), each row of pred is predicted logits and each row of soft_targets is a discrete distribution.
-def soft_cross_entropy(pred, soft_targets):
-    logsoftmax = torch.nn.LogSoftmax()
-    pred = pred.type('torch.DoubleTensor').cuda()
+def soft_cross_entropy(pred, soft_targets, use_cuda): # modified eval_paper_authors: cuda request
+    if use_cuda: # modified eval_paper_authors: cuda request
+        logsoftmax = torch.nn.LogSoftmax()
+        pred = pred.type('torch.DoubleTensor').cuda()
+    else: # modified eval_paper_authors: no cuda
+        logsoftmax = torch.nn.LogSoftmax()
+        pred = pred.type('torch.DoubleTensor')       
     return torch.mean(torch.sum(- soft_targets * logsoftmax(pred), 1))
 
 def get_true_distribution(train_data, num_s):

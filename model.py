@@ -8,7 +8,9 @@ import time
 
 
 class RENet(nn.Module):
-    def __init__(self, in_dim, h_dim, num_rels, dropout=0, model=0, seq_len=10, num_k=10):
+
+    def __init__(self, in_dim, h_dim, num_rels, dropout=0, model=0, seq_len=10, num_k=10, use_cuda=True): #modified eval_paper_authors : add use_cuda
+
         super(RENet, self).__init__()
         self.in_dim = in_dim
         self.h_dim = h_dim
@@ -33,7 +35,7 @@ class RENet(nn.Module):
         self.preds_list_o = defaultdict(lambda: torch.zeros(self.num_k))
         self.preds_ind_o = defaultdict(lambda: torch.zeros(self.num_k))
 
-        self.aggregator = RGCNAggregator(h_dim, dropout, in_dim, num_rels, 100, model, seq_len)
+        self.aggregator = RGCNAggregator(h_dim, dropout, in_dim, num_rels, 100, model, seq_len, use_cuda=use_cuda) #modified eval_paper_authors: added use_cuda
 
         self.linear = nn.Linear(3 * h_dim, in_dim)
         self.linear_r = nn.Linear(2 * h_dim, num_rels)
@@ -51,16 +53,17 @@ class RENet(nn.Module):
         self.graph_dict = None
         self.data = None
         self.global_emb = None
-
         self.latest_time = 0
-
         self.criterion = nn.CrossEntropyLoss()
 
+        self.new_logging_dict = {} #added by eval_paper_authors
+        self.use_cuda = use_cuda #added by eval_paper_authors
 
     """
     Prediction function in training. 
     This should be different from testing because in testing we don't use ground-truth history.
     """
+
     def forward(self, triplets, s_hist, o_hist, graph_dict, subject=True):
         if subject:
             rel_embeds = self.rel_embeds[:self.num_rels]
@@ -76,16 +79,22 @@ class RENet(nn.Module):
             s = triplets[:, 2]
             hist = o_hist
             reverse = True
-
-        hist_len = torch.LongTensor(list(map(len, hist[0]))).cuda()
+        if self.use_cuda==True: # modified eval_paper_authors: added use_cuda request
+            hist_len = torch.LongTensor(list(map(len, hist[0]))).cuda()
+        else:  # modified eval_paper_authors: added use_cuda request
+            hist_len = torch.LongTensor(list(map(len, hist[0])))
         s_len, s_idx = hist_len.sort(0, descending=True)
         s_packed_input, s_packed_input_r = self.aggregator(hist, s, r, self.ent_embeds,
-                                                        rel_embeds, graph_dict, self.global_emb,
-                                                        reverse=reverse)
-   
+                                                           rel_embeds, graph_dict, self.global_emb,
+                                                           reverse=reverse)
+
         tt, s_h = self.encoder(s_packed_input)
         s_h = s_h.squeeze()
-        s_h = torch.cat((s_h, torch.zeros(len(s) - len(s_h), self.h_dim).cuda()), dim=0)
+        if self.use_cuda==True: # modified eval_paper_authors: added use_cuda request
+            s_h = torch.cat((s_h, torch.zeros(len(s) - len(s_h), self.h_dim).cuda()), dim=0)
+        else: # modified eval_paper_authors: added use_cuda request
+            s_h = torch.cat((s_h, torch.zeros(len(s) - len(s_h), self.h_dim)), dim=0)
+
         ob_pred = self.linear(
             self.dropout(torch.cat((self.ent_embeds[s[s_idx]], s_h, rel_embeds[r[s_idx]]), dim=1)))
         loss_sub = self.criterion(ob_pred, o[s_idx])
@@ -93,8 +102,10 @@ class RENet(nn.Module):
         ###### Relations
         tt, s_q = self.encoder_r(s_packed_input_r)
         s_q = s_q.squeeze()
-        s_q = torch.cat((s_q, torch.zeros(len(s) - len(s_q), self.h_dim).cuda()), dim=0)
-
+        if self.use_cuda==True: # modified eval_paper_authors: added use_cuda request
+            s_q = torch.cat((s_q, torch.zeros(len(s) - len(s_q), self.h_dim).cuda()), dim=0)
+        else: # modified eval_paper_authors: added use_cuda request
+            s_q = torch.cat((s_q, torch.zeros(len(s) - len(s_q), self.h_dim)), dim=0)
         ob_pred_r = self.linear_r(
             self.dropout(torch.cat((self.ent_embeds[s[s_idx]], s_q), dim=1)))
         loss_sub_r = self.criterion(ob_pred_r, r[s_idx])
@@ -109,7 +120,6 @@ class RENet(nn.Module):
         s_hist_t = s_history[1]
         o_hist = o_history[0]
         o_hist_t = o_history[1]
-
 
         self.s_hist_test = [[] for _ in range(self.in_dim)]
         self.o_hist_test = [[] for _ in range(self.in_dim)]
@@ -140,10 +150,10 @@ class RENet(nn.Module):
             o = triple[2]
             t = triple[3]
 
-            if len(s_his_t)!= 0 and s_his_t[-1] <= last_t:
+            if len(s_his_t) != 0 and s_his_t[-1] <= last_t:
                 self.s_hist_test[s] = s_his.copy()
                 self.s_hist_test_t[s] = s_his_t.copy()
-            if len(o_his_t)!= 0 and o_his_t[-1] <= last_t:
+            if len(o_his_t) != 0 and o_his_t[-1] <= last_t:
                 self.o_hist_test[o] = o_his.copy()
                 self.o_hist_test_t[o] = o_his_t.copy()
 
@@ -163,7 +173,6 @@ class RENet(nn.Module):
                 if len(o_his_t) != 0 and o_his_t[-1] <= last_t:
                     self.o_hist_test[o] = o_his.copy()
                     self.o_hist_test_t[o] = o_his_t.copy()
-
 
     def pred_r_rank2(self, s, r, subject=True):
         if subject:
@@ -185,19 +194,32 @@ class RENet(nn.Module):
             rel_embeds = self.rel_embeds[self.num_rels:]
             reverse = True
         if len(s_history[0]) == 0:
-            s_h = torch.zeros(self.num_rels, self.h_dim).cuda()
-            s_q = torch.zeros(self.num_rels, self.h_dim).cuda()
+            if self.use_cuda== True: #modified eval_paper_authors: added use_cuda request
+                s_h = torch.zeros(self.num_rels, self.h_dim).cuda()
+                s_q = torch.zeros(self.num_rels, self.h_dim).cuda()
+            else: # modified eval_paper_authors: added use_cuda request# modified eval_paper_authors: added use_cuda request
+                s_h = torch.zeros(self.num_rels, self.h_dim)
+                s_q = torch.zeros(self.num_rels, self.h_dim)
         else:
-            s_packed_input, s_packed_input_r = self.aggregator.predict_batch((s_history, s_history_t), s, r, self.ent_embeds,
-                                                   rel_embeds, self.graph_dict, self.global_emb,
-                                                   reverse=reverse)
+            s_packed_input, s_packed_input_r = self.aggregator.predict_batch((s_history, s_history_t), s, r,
+                                                                             self.ent_embeds,
+                                                                             rel_embeds, self.graph_dict,
+                                                                             self.global_emb,
+                                                                             reverse=reverse)
             if s_packed_input is None:
-                s_h = torch.zeros(len(s), self.h_dim).cuda()
-                s_q = torch.zeros(len(s), self.h_dim).cuda()
+                if self.use_cuda== True: #modified eval_paper_authors: added use_cuda request
+                    s_h = torch.zeros(len(s), self.h_dim).cuda()
+                    s_q = torch.zeros(len(s), self.h_dim).cuda()
+                else: # modified eval_paper_authors: added use_cuda request
+                    s_h = torch.zeros(len(s), self.h_dim)
+                    s_q = torch.zeros(len(s), self.h_dim)                  
             else:
                 tt, s_h = self.encoder(s_packed_input)
                 s_h = s_h.squeeze()
-                s_h = torch.cat((s_h, torch.zeros(len(s) - len(s_h), self.h_dim).cuda()), dim=0)
+                if self.use_cuda== True: #modified eval_paper_authors: added use_cuda request
+                    s_h = torch.cat((s_h, torch.zeros(len(s) - len(s_h), self.h_dim).cuda()), dim=0)
+                else:
+                    s_h = torch.cat((s_h, torch.zeros(len(s) - len(s_h), self.h_dim)), dim=0)
                 ###### Relations
                 tt, s_q = self.encoder_r(s_packed_input_r)
                 s_q = s_q.squeeze()
@@ -206,14 +228,16 @@ class RENet(nn.Module):
         p_o = torch.softmax(ob_pred.view(self.num_rels, self.in_dim), dim=1)
         ob_pred_r = self.linear_r(torch.cat((self.ent_embeds[s[0]], s_q[0]), dim=0))
         p_r = torch.softmax(ob_pred_r.view(-1), dim=0)
-        ob_pred_rank = p_o * p_r.view(self.num_rels,1)
+        ob_pred_rank = p_o * p_r.view(self.num_rels, 1)
 
         return ob_pred_rank
 
     """
     Prediction function in testing
     """
-    def predict(self, triplet, s_hist, o_hist, global_model):
+
+    def predict(self, triplet, s_hist, o_hist, global_model, datasetname="placeholder", settingsinfo="placeholder", experiment_nr=0): #added eval_paper_authors: datasetname and settingsinfo and experiment_nr for logging
+
         s = triplet[0]
         r = triplet[1]
         o = triplet[2]
@@ -221,7 +245,7 @@ class RENet(nn.Module):
 
         if self.latest_time != t:
             _, sub, prob_sub = global_model.predict(self.latest_time, self.graph_dict, subject=True)
-            
+
             m = torch.distributions.categorical.Categorical(prob_sub)
             subjects = m.sample(torch.Size([self.num_k]))
             prob_subjects = prob_sub[subjects]
@@ -234,7 +258,7 @@ class RENet(nn.Module):
                 else:
                     s_done.add(s)
                 ss = torch.LongTensor([s]).repeat(self.num_rels)
-                rr = torch.arange(0,self.num_rels)
+                rr = torch.arange(0, self.num_rels)
                 probs = prob_s * self.pred_r_rank2(ss, rr, subject=True)
                 probs, indices = torch.topk(probs.view(-1), self.num_k, sorted=False)
                 self.preds_list_s[s] = probs.view(-1)
@@ -249,14 +273,13 @@ class RENet(nn.Module):
                 idx += 1
             _, triple_candidates = torch.topk(prob_tensor, self.num_k, sorted=False)
             indices = triple_candidates // self.num_k
-            for i,idx in enumerate(indices):
+            for i, idx in enumerate(indices):
                 s = s_to_id[idx.item()]
                 num_r_num_s = self.preds_ind_s[s][triple_candidates[i] % self.num_k]
                 rr = num_r_num_s // self.in_dim
                 o_s = num_r_num_s % self.in_dim
                 self.s_his_cache[s] = self.update_cache(self.s_his_cache[s], rr, o_s.view(-1, 1))
                 self.s_his_cache_t[s] = self.latest_time.item()
-
 
             _, ob, prob_ob = global_model.predict(t, self.graph_dict, subject=False)
             prob_ob = torch.softmax(ob.view(-1), dim=0)
@@ -296,9 +319,8 @@ class RENet(nn.Module):
                 self.o_his_cache[o] = self.update_cache(self.o_his_cache[o], rr, s_o.view(-1, 1))
                 self.o_his_cache_t[o] = self.latest_time.item()
 
-
             self.data = get_data(self.s_his_cache, self.o_his_cache)
-            self.graph_dict[self.latest_time.item()] = get_big_graph(self.data, self.num_rels)
+            self.graph_dict[self.latest_time.item()] = get_big_graph(self.data, self.num_rels) 
             global_emb_prev_t, _, _ = global_model.predict(self.latest_time, self.graph_dict, subject=True)
             self.global_emb[self.latest_time.item()] = global_emb_prev_t
 
@@ -327,47 +349,79 @@ class RENet(nn.Module):
             self.preds_list_o = defaultdict(lambda: torch.zeros(self.num_k))
             self.preds_ind_o = defaultdict(lambda: torch.zeros(self.num_k))
 
-
-
         if len(s_hist[0]) == 0 or len(self.s_hist_test[s]) == 0:
-            s_h = torch.zeros(self.h_dim).cuda()
+            if self.use_cuda==True: # modified eval_paper_authors: added use_cuda request
+                s_h = torch.zeros(self.h_dim).cuda()
+            else:
+                s_h = torch.zeros(self.h_dim)
         else:
 
             s_history = self.s_hist_test[s]
             s_history_t = self.s_hist_test_t[s]
-            inp, _ = self.aggregator.predict((s_history, s_history_t), s, r, self.ent_embeds, self.rel_embeds[:self.num_rels], self.graph_dict, self.global_emb, reverse=False)
+            inp, _ = self.aggregator.predict((s_history, s_history_t), s, r, self.ent_embeds,
+                                             self.rel_embeds[:self.num_rels], self.graph_dict, self.global_emb,
+                                             reverse=False)
             tt, s_h = self.encoder(inp.view(1, len(s_history), 4 * self.h_dim))
             s_h = s_h.squeeze()
 
         if len(o_hist[0]) == 0 or len(self.o_hist_test[o]) == 0:
-            o_h = torch.zeros(self.h_dim).cuda()
+            if self.use_cuda==True: # modified eval_paper_authors: added use_cuda request
+                o_h = torch.zeros(self.h_dim).cuda()
+            else:  # modified eval_paper_authors: added use_cuda request
+                o_h = torch.zeros(self.h_dim)
         else:
 
             o_history = self.o_hist_test[o]
             o_history_t = self.o_hist_test_t[o]
-            inp, _ = self.aggregator.predict((o_history, o_history_t), o, r, self.ent_embeds, self.rel_embeds[self.num_rels:], self.graph_dict, self.global_emb, reverse=True)
+            inp, _ = self.aggregator.predict((o_history, o_history_t), o, r, self.ent_embeds,
+                                             self.rel_embeds[self.num_rels:], self.graph_dict, self.global_emb,
+                                             reverse=True)
 
             tt, o_h = self.encoder(inp.view(1, len(o_history), 4 * self.h_dim))
             o_h = o_h.squeeze()
-        
 
         ob_pred = self.linear(torch.cat((self.ent_embeds[s], s_h, self.rel_embeds[:self.num_rels][r]), dim=0))
         sub_pred = self.linear(torch.cat((self.ent_embeds[o], o_h, self.rel_embeds[self.num_rels:][r]), dim=0))
-
 
         loss_sub = self.criterion(ob_pred.view(1, -1), o.view(-1))
         loss_ob = self.criterion(sub_pred.view(1, -1), s.view(-1))
 
         loss = loss_sub + loss_ob
+        
+        # added eval_paper_authors: the following block for logging the scores.
+        # dict, with key: string for query, values: scores and groud truth
+        if datasetname != "placeholder": #its only called placeholder when we are not in test setting
+            ## added eval_paper_authors:
+            import inspect
+            import sys
+            currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+            # parentdir = os.path.dirname(currentdir)
+            sys.path.insert(1, currentdir) 
+            sys.path.insert(1, os.path.join(sys.path[0], '..')) 
+            import evaluation_utils
+            name = 'renet'+ '-'+ datasetname + '-'+ str(experiment_nr) + '-'+ settingsinfo 
+            query_1= str(triplet[0].item())+'_'+str(triplet[1].item())+'_'+'xxx'+str(triplet[2].item())+'_'+str(t.item())
+            gt_1 = triplet[2]
+            preds_1 = ob_pred
+            self.new_logging_dict[query_1] = [preds_1.cpu().detach().numpy(), gt_1.cpu().detach().numpy()]
 
+            
+            query_2= 'xxx'+str(triplet[0].item())+'_'+str(triplet[1].item())+'_'+str(triplet[2].item())+'_'+str(t.item())
+            gt_2 = triplet[0]
+            preds_2 = sub_pred
+            self.new_logging_dict[query_2] = [preds_2.cpu().detach().numpy(), gt_2.cpu().detach().numpy()]
+            
+
+        
         return loss, sub_pred, ob_pred
 
-    def evaluate(self, triplet, s_hist, o_hist, global_model):
+    def evaluate(self, triplet, s_hist, o_hist, global_model, datasetname="placeholder", settingsinfo="placeholder", experiment_nr=0): # modified eval_paper_authors: added datasetname, settingsinfo, experiment_nr for logging info
         s = triplet[0]
         r = triplet[1]
         o = triplet[2]
 
-        loss, sub_pred, ob_pred = self.predict(triplet, s_hist, o_hist, global_model)
+        loss, sub_pred, ob_pred = self.predict(triplet, s_hist, o_hist, global_model, datasetname, settingsinfo, experiment_nr) # modified eval_paper_authors: added datasetname, settingsinfo, experiment_nr for logging info
+        
         o_label = o
         s_label = s
         ob_pred_comp1 = (ob_pred > ob_pred[o_label]).data.cpu().numpy()
@@ -380,12 +434,13 @@ class RENet(nn.Module):
 
         return np.array([rank_sub, rank_ob]), loss
 
-
-    def evaluate_filter(self, triplet, s_hist, o_hist, global_model, all_triplets):
+    def evaluate_filter(self, triplet, s_hist, o_hist, global_model, all_triplets, datasetname="placeholder", settingsinfo="placeholder", experiment_nr=0): # modified eval_paper_authors: added datasetname, settingsinfo, experiment_nr for logging info
         s = triplet[0]
         r = triplet[1]
         o = triplet[2]
-        loss, sub_pred, ob_pred = self.predict(triplet, s_hist, o_hist, global_model)
+        loss, sub_pred, ob_pred = self.predict(triplet, s_hist, o_hist, global_model, datasetname, settingsinfo, experiment_nr) # modified eval_paper_authors: added datasetname, settingsinfo, experiment_nr for logging info
+
+        
         o_label = o
         s_label = s
         sub_pred = F.sigmoid(sub_pred)
@@ -418,10 +473,11 @@ class RENet(nn.Module):
         rank_sub = np.sum(sub_pred_comp1) + ((np.sum(sub_pred_comp2) - 1.0) / 2) + 1
         return np.array([rank_sub, rank_ob]), loss
 
+
     def update_cache(self, s_his_cache, r, o_candidate):
         o_candidate = o_candidate % self.in_dim
         if len(s_his_cache) == 0:
-            s_his_cache = torch.cat((r.view(-1,1),
+            s_his_cache = torch.cat((r.view(-1, 1),
                                      o_candidate.view(-1, 1)),
                                     dim=1)
         else:

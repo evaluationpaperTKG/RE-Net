@@ -112,7 +112,7 @@ graph_dict_train = {}
 
 train_data, train_times = load_quadruples('', 'train.txt')
 test_data, test_times = load_quadruples('', 'test.txt')
-# dev_data, dev_times = load_quadruples('', 'valid.txt')
+dev_data, dev_times = load_quadruples('', 'valid.txt')
 # total_data, _ = load_quadruples('', 'train.txt', 'test.txt')
 
 history_len = 10
@@ -203,61 +203,61 @@ with open('train_history_ob.txt', 'wb') as fp:
     pickle.dump([o_history_data, o_history_data_t], fp)
 
 # print(s_history_data[0])
-# s_history_data_dev = [[] for _ in range(len(dev_data))]
-# o_history_data_dev = [[] for _ in range(len(dev_data))]
-# s_history_data_dev_t = [[] for _ in range(len(dev_data))]
-# o_history_data_dev_t = [[] for _ in range(len(dev_data))]
-#
-# for i, dev in enumerate(dev_data):
-#     if i % 10000 == 0:
-#         print("valid", i, len(dev_data))
-#     t = dev[3]
-#     if latest_t != t:
-#         for ee in range(num_e):
-#             if len(s_his_cache[ee]) != 0:
-#                 if len(s_his[ee]) >= history_len:
-#                     s_his[ee].pop(0)
-#                     s_his_t[ee].pop(0)
-#                 s_his_t[ee].append(s_his_cache_t[ee])
-#                 s_his[ee].append(s_his_cache[ee].copy())
-#                 s_his_cache[ee] = []
-#                 s_his_cache_t[ee] = None
-#             if len(o_his_cache[ee]) != 0:
-#                 if len(o_his[ee]) >= history_len:
-#                     o_his[ee].pop(0)
-#                     o_his_t[ee].pop(0)
-#
-#                 o_his_t[ee].append(o_his_cache_t[ee])
-#                 o_his[ee].append(o_his_cache[ee].copy())
-#
-#                 o_his_cache[ee] = []
-#                 o_his_cache_t[ee] = None
-#         latest_t = t
-#     s = dev[0]
-#     r = dev[1]
-#     o = dev[2]
-#     s_history_data_dev[i] = s_his[s].copy()
-#     o_history_data_dev[i] = o_his[o].copy()
-#     s_history_data_dev_t[i] = s_his_t[s].copy()
-#     o_history_data_dev_t[i] = o_his_t[o].copy()
-#     if len(s_his_cache[s]) == 0:
-#         s_his_cache[s] = np.array([[r, o]])
-#     else:
-#         s_his_cache[s] = np.concatenate((s_his_cache[s], [[r, o]]), axis=0)
-#     s_his_cache_t[s] = t
-#
-#     if len(o_his_cache[o]) == 0:
-#         o_his_cache[o] = np.array([[r, s]])
-#     else:
-#         o_his_cache[o] = np.concatenate((o_his_cache[o], [[r, s]]), axis=0)
-#     o_his_cache_t[o] = t
-#
-#     # print(o_his_cache[o])
+s_history_data_dev = [[] for _ in range(len(dev_data))]
+o_history_data_dev = [[] for _ in range(len(dev_data))]
+s_history_data_dev_t = [[] for _ in range(len(dev_data))]
+o_history_data_dev_t = [[] for _ in range(len(dev_data))]
 
-# with open('dev_history_sub.txt', 'wb') as fp:
-#     pickle.dump([s_history_data_dev, s_history_data_dev_t], fp)
-# with open('dev_history_ob.txt', 'wb') as fp:
-#     pickle.dump([o_history_data_dev, o_history_data_dev_t], fp)
+for i, dev in enumerate(dev_data):
+    if i % 10000 == 0:
+        print("valid", i, len(dev_data))
+    t = dev[3]
+    if latest_t != t:
+        for ee in range(num_e):
+            if len(s_his_cache[ee]) != 0:
+                if len(s_his[ee]) >= history_len:
+                    s_his[ee].pop(0)
+                    s_his_t[ee].pop(0)
+                s_his_t[ee].append(s_his_cache_t[ee])
+                s_his[ee].append(s_his_cache[ee].copy())
+                s_his_cache[ee] = []
+                s_his_cache_t[ee] = None
+            if len(o_his_cache[ee]) != 0:
+                if len(o_his[ee]) >= history_len:
+                    o_his[ee].pop(0)
+                    o_his_t[ee].pop(0)
+
+                o_his_t[ee].append(o_his_cache_t[ee])
+                o_his[ee].append(o_his_cache[ee].copy())
+
+                o_his_cache[ee] = []
+                o_his_cache_t[ee] = None
+        latest_t = t
+    s = dev[0]
+    r = dev[1]
+    o = dev[2]
+    s_history_data_dev[i] = s_his[s].copy()
+    o_history_data_dev[i] = o_his[o].copy()
+    s_history_data_dev_t[i] = s_his_t[s].copy()
+    o_history_data_dev_t[i] = o_his_t[o].copy()
+    if len(s_his_cache[s]) == 0:
+        s_his_cache[s] = np.array([[r, o]])
+    else:
+        s_his_cache[s] = np.concatenate((s_his_cache[s], [[r, o]]), axis=0)
+    s_his_cache_t[s] = t
+
+    if len(o_his_cache[o]) == 0:
+        o_his_cache[o] = np.array([[r, s]])
+    else:
+        o_his_cache[o] = np.concatenate((o_his_cache[o], [[r, s]]), axis=0)
+    o_his_cache_t[o] = t
+
+    # print(o_his_cache[o])
+
+with open('dev_history_sub.txt', 'wb') as fp:
+    pickle.dump([s_history_data_dev, s_history_data_dev_t], fp)
+with open('dev_history_ob.txt', 'wb') as fp:
+    pickle.dump([o_history_data_dev, o_history_data_dev_t], fp)
 
 s_history_data_test = [[] for _ in range(len(test_data))]
 o_history_data_test = [[] for _ in range(len(test_data))]

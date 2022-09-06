@@ -8,7 +8,8 @@ import time
 
 
 class RENet_global(nn.Module):
-    def __init__(self, in_dim, h_dim, num_rels, dropout=0, model=0, seq_len=10, num_k=10, maxpool=1):
+
+    def __init__(self, in_dim, h_dim, num_rels, dropout=0, model=0, seq_len=10, num_k=10, maxpool=1, use_cuda=True): #added eval_paper_authors: use_cuda
         super(RENet_global, self).__init__()
         self.in_dim = in_dim
         self.h_dim = h_dim
@@ -17,22 +18,20 @@ class RENet_global(nn.Module):
         self.seq_len = seq_len
         self.num_k = num_k
 
-        self.ent_embeds = nn.Parameter(torch.Tensor(in_dim, h_dim))
-        nn.init.xavier_uniform_(self.ent_embeds,
-                                gain=nn.init.calculate_gain('relu'))
+        self.ent_embeds = nn.Parameter(torch.Tensor(in_dim, h_dim))  
+        nn.init.xavier_uniform_(self.ent_embeds, gain=nn.init.calculate_gain('relu'))
 
         self.dropout = nn.Dropout(dropout)
         self.encoder_global = nn.GRU(h_dim, h_dim, batch_first=True)
-
-        self.aggregator = RGCNAggregator_global(h_dim, dropout, in_dim, num_rels, 100, model, seq_len, maxpool)
-
+        self.aggregator = RGCNAggregator_global(h_dim, dropout, in_dim, num_rels, 100, model, seq_len, maxpool, use_cuda) #modified eval_paper_authors: add use_cuda
         self.linear_s = nn.Linear(h_dim, in_dim)
         self.linear_o = nn.Linear(h_dim, in_dim)
         self.global_emb = None
-
+        self.use_cuda = use_cuda
 
 
     def forward(self, t_list, true_prob_s, true_prob_o, graph_dict, subject=True):
+
         if subject:
             reverse = False
             linear = self.linear_s
@@ -43,16 +42,18 @@ class RENet_global(nn.Module):
             true_prob = true_prob_s
 
         sorted_t, idx = t_list.sort(0, descending=True)
-
-        packed_input = self.aggregator(sorted_t, self.ent_embeds, graph_dict, reverse=reverse)
-
+        packed_input = self.aggregator(sorted_t, self.ent_embeds, graph_dict, reverse=reverse) 
         tt, s_q = self.encoder_global(packed_input)
         s_q = s_q.squeeze()
-        s_q = torch.cat((s_q, torch.zeros(len(t_list) - len(s_q), self.h_dim).cuda()), dim=0)
-        pred = linear(s_q)
-        loss = soft_cross_entropy(pred, true_prob[idx])
+        if self.cuda == True: #added eval_paper_authors: use_cuda
+            s_q = torch.cat((s_q, torch.zeros(len(t_list) - len(s_q), self.h_dim).cuda()), dim=0)
+        else: #added eval_paper_authors: use_cuda
+            s_q = torch.cat((s_q, torch.zeros(len(t_list) - len(s_q), self.h_dim)), dim=0)
 
+        pred = linear(s_q)
+        loss = soft_cross_entropy(pred, true_prob[idx], self.use_cuda) #added eval_paper_authors: use_cuda
         return loss
+
 
     def get_global_emb(self, t_list, graph_dict):
         global_emb = dict()

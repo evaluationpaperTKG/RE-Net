@@ -316,4 +316,3 @@ with open('test_history_sub.txt', 'wb') as fp:
 with open('test_history_ob.txt', 'wb') as fp:
     pickle.dump([o_history_data_test, o_history_data_test_t], fp)
     # print(train)
-

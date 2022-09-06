@@ -52,11 +52,24 @@ class RGCNLayer(nn.Module):
 
 
 class RGCNBlockLayer(RGCNLayer):
-    def __init__(self, in_feat, out_feat, num_rels, num_bases, bias=None,
-                 activation=None, self_loop=False, dropout=0.0):
-        super(RGCNBlockLayer, self).__init__(in_feat, out_feat, bias,
-                                             activation, self_loop=self_loop,
+    def __init__(self, in_feat, out_feat, num_rels, num_bases,
+                 bias=None, activation=None, self_loop=False, dropout=0.0):
+        '''
+
+        :param in_feat: hidden units
+        :param out_feat: hidden units
+        :param num_rels: total number of relations * 2
+        :param num_bases: 100
+        :param bias: 100
+        :param activation: F.relu
+        :param self_loop: True
+        :param dropout: dropout ratio
+        '''
+        super(RGCNBlockLayer, self).__init__(in_feat, out_feat, bias, activation,
+                                             self_loop=self_loop,
                                              dropout=dropout)
+        self.in_feat = in_feat
+        self.out_feat = out_feat
         self.num_rels = num_rels
         self.num_bases = num_bases
         assert self.num_bases > 0
@@ -92,3 +105,4 @@ class RGCNBlockLayer(RGCNLayer):
 
     def apply_func(self, nodes):
         return {'h': nodes.data['h'] * nodes.data['norm']}
+        
