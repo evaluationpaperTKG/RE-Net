@@ -45,7 +45,7 @@ class RENet_global(nn.Module):
         packed_input = self.aggregator(sorted_t, self.ent_embeds, graph_dict, reverse=reverse) 
         tt, s_q = self.encoder_global(packed_input)
         s_q = s_q.squeeze()
-        if self.cuda == True: #added eval_paper_authors: use_cuda
+        if self.use_cuda == True: #added eval_paper_authors: use_cuda
             s_q = torch.cat((s_q, torch.zeros(len(t_list) - len(s_q), self.h_dim).cuda()), dim=0)
         else: #added eval_paper_authors: use_cuda
             s_q = torch.cat((s_q, torch.zeros(len(t_list) - len(s_q), self.h_dim)), dim=0)

@@ -22,7 +22,7 @@ def train(args):
 
 
     os.makedirs('models', exist_ok=True)
-    os.makedirs('models/' + args.dataset, exist_ok=True)
+    os.makedirs('models/' + args.dataset +str(args.runnr), exist_ok=True)
 
     # if args.model == 0: 
     #     model_state_file = 'models/' + args.dataset + 'attn.pth'
