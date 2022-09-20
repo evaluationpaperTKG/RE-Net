@@ -22,7 +22,7 @@ def train(args):
     # model_state_global_file = 'models/' + args.dataset + '/max' + str(args.maxpool) + 'rgcn_global.pth'
     # model_state_file_backup = 'models/' + args.dataset + '/rgcn_backup.pth'
     # model_state_file = 'models/' + args.dataset + '/' +str(args.runnr)+ '/' +args.modifiedeval_paper_authors + '/rgcn.pth' #eval_paper_authors - one folder per run!
-    model_state_file = 'models/' + args.dataset + '/' +str(args.runnr)+  + '/rgcn.pth' # eval_paper_authors - one folder per run!
+    model_state_file = 'models/' + args.dataset + '/' +str(args.runnr) + '/rgcn.pth' # eval_paper_authors - one folder per run!
     model_graph_file = 'models/' + args.dataset + '/' +str(args.runnr)+ '/rgcn_graph.pth' # eval_paper_authors
     model_state_global_file2 = 'models/' + args.dataset + '/' +str(args.runnr)+  '/max' + str(args.maxpool) + 'rgcn_global2.pth' # eval_paper_authors
     model_state_global_file = 'models/' + args.dataset + '/' +str(args.runnr)+   '/max' + str(args.maxpool) + 'rgcn_global.pth' # eval_paper_authors
