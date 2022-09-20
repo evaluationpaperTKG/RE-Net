@@ -167,10 +167,10 @@ def test(args):
             # Filtered metric
             if args.setting == 'raw': #modified eval_paper_authors
                 ranks_filter, loss = model.evaluate(batch_data, (s_hist, s_hist_t), (o_hist, o_hist_t),
-                                                    global_model, datasetname= args.dataset, settingsinfo=settingsinfo, modifiedeval_paper_authors=modifiedeval_paper_authors, experiment_nr=experiment_nr)
+                                                    global_model, datasetname= args.dataset, settingsinfo=settingsinfo, experiment_nr=experiment_nr)
             elif args.setting == 'static':
                 ranks_filter, loss = model.evaluate_filter(batch_data, (s_hist, s_hist_t), (o_hist, o_hist_t),
-                                                           global_model, total_data, datasetname= args.dataset, settingsinfo=settingsinfo, modifiedeval_paper_authors=modifiedeval_paper_authors, experiment_nr=experiment_nr)
+                                                           global_model, total_data, datasetname= args.dataset, settingsinfo=settingsinfo, experiment_nr=experiment_nr)
 
 
             total_ranks_filter = np.concatenate((total_ranks_filter, ranks_filter))
